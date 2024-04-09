@@ -2,7 +2,6 @@
 edition = "2021"
 exclude = [
     "libjxl/third_party/libpng",
-    "libjxl/third_party/sjpeg",
     "libjxl/third_party/lcms",
     "libjxl/third_party/googletest",
     "libjxl/third_party/brotli/tests",
