@@ -1,4 +1,6 @@
 [package]
+description = "Rust wrapped for jpegli jpeg implementation"
+documentation = "https://docs.rs/jpegli-sys"
 edition = "2021"
 exclude = [
     "libjxl/third_party/libpng",
@@ -22,6 +24,8 @@ exclude = [
     "libjxl/debian",
     "libjxl/plugins",
 ]
+homepage = "https://github.com/Szpadel/jpegli-rs"
+license = "BSD3"
 name = "jpegli-sys"
 version = "0.1.0+0.10.2"
 
