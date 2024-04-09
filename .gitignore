@@ -1,6 +1,1 @@
-doc/
-*.dSYM
-Cargo.lock
-target/
-testout-r1.jpg
-testout-r2.jpg
+target
