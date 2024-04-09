@@ -9,15 +9,7 @@ documentation = "https://docs.rs/jpegli"
 edition = "2021"
 homepage = "https://github.com/Szpadel/jpegli-rs"
 include = ["/README.md", "/Cargo.toml", "/src/*.rs", "LICENSE"]
-keywords = [
-    "jpeg",
-    "jpegli",
-    "jpegxl",
-    "libjpeg",
-    "image",
-    "encoder",
-    "decoder",
-]
+keywords = ["jpeg", "jpegli", "encoder", "decoder"]
 license = "BSD-3-Clause"
 name = "jpegli"
 readme = "README.md"
