@@ -1,0 +1,3 @@
+[submodule "jpegli-sys/libjxl"]
+	path = jpegli-sys/libjxl
+	url = https://github.com/libjxl/libjxl

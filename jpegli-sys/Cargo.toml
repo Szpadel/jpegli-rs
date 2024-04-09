@@ -1,0 +1,36 @@
+[package]
+edition = "2021"
+exclude = [
+    "libjxl/third_party/libpng",
+    "libjxl/third_party/sjpeg",
+    "libjxl/third_party/lcms",
+    "libjxl/third_party/googletest",
+    "libjxl/third_party/brotli/tests",
+    "libjxl/third_party/brotli/java",
+    "libjxl/third_party/brotli/csharp",
+    "libjxl/third_party/brotli/research",
+    "libjxl/third_party/brotli/js",
+    "libjxl/third_party/highway/g3doc",
+    "libjxl/third_party/skcms/profiles",
+    "libjxl/third_party/zlib/contrib",
+    "libjxl/testdata",
+    "libjxl/examples",
+    "libjxl/experimental",
+    "libjxl/docker",
+    "libjxl/doc",
+    "libjxl/.github",
+    "libjxl/debian",
+    "libjxl/plugins",
+]
+name = "jpegli-sys"
+version = "0.1.0+0.10.2"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cmake = "0.1.50"
+pkg-config = "0.3.29"
+
+[dev-dependencies]
+arrayvec = "0.7"
