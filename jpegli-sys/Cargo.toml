@@ -25,7 +25,7 @@ exclude = [
     "libjxl/plugins",
 ]
 homepage = "https://github.com/Szpadel/jpegli-rs"
-license = "BSD3"
+license = "BSD-3-Clause"
 name = "jpegli-sys"
 version = "0.1.0+0.10.2"
 
