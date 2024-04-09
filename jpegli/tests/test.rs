@@ -1,11 +1,13 @@
-use mozjpeg::CompInfoExt;
+use jpegli::CompInfoExt;
 
 pub fn decompress_jpeg(jpeg: &[u8]) -> Vec<Vec<u8>> {
-    let decomp = mozjpeg::Decompress::new_mem(jpeg).unwrap();
+    let decomp = jpegli::Decompress::new_mem(jpeg).unwrap();
 
-    let mut bitmaps:Vec<_> = decomp.components().iter().map(|c|{
-        Vec::with_capacity(c.row_stride() * c.col_stride())
-    }).collect();
+    let mut bitmaps: Vec<_> = decomp
+        .components()
+        .iter()
+        .map(|c| Vec::with_capacity(c.row_stride() * c.col_stride()))
+        .collect();
 
     let mut decomp = decomp.raw().unwrap();
     {
@@ -20,9 +22,8 @@ pub fn decompress_jpeg(jpeg: &[u8]) -> Vec<Vec<u8>> {
 #[test]
 fn color_jpeg() {
     for size in 1..64 {
-        let mut comp = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
+        let mut comp = jpegli::Compress::new(jpegli::ColorSpace::JCS_RGB);
 
-        comp.set_scan_optimization_mode(mozjpeg::ScanMode::AllComponentsTogether);
         comp.set_size(size, size);
         let mut comp = comp.start_compress(Vec::new()).unwrap();
 
@@ -38,9 +39,7 @@ fn color_jpeg() {
 #[test]
 fn raw_jpeg() {
     for size in 1..64 {
-        let mut comp = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_YCbCr);
-
-        comp.set_scan_optimization_mode(mozjpeg::ScanMode::AllComponentsTogether);
+        let mut comp = jpegli::Compress::new(jpegli::ColorSpace::JCS_YCbCr);
 
         comp.set_raw_data_in(true);
         comp.set_size(size, size);

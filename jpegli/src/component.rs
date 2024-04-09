@@ -1,4 +1,4 @@
-pub use crate::ffi::jpeg_component_info as CompInfo;
+pub use crate::ffi::jpegli_component_info as CompInfo;
 use crate::ffi::DCTSIZE;
 use crate::qtable::QTable;
 

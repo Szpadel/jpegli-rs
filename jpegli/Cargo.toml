@@ -1,34 +1,39 @@
 [package]
-authors = ["Kornel <kornel@geekhood.net>"]
+authors = [
+    "Kornel <kornel@geekhood.net>",
+    "Piotr Rogowski <piotrekrogowski@gmail.com>",
+]
 categories = ["multimedia::images"]
-description = "Higher-level wrapper for Mozilla's JPEG library"
-documentation = "https://docs.rs/mozjpeg"
-homepage = "https://lib.rs/mozjpeg"
-include = ["/README.md", "/Cargo.toml", "/src/*.rs", "LICENSE"]
-keywords = ["jpeg", "libjpeg", "image", "encoder", "decoder"]
-license = "IJG"
-name = "mozjpeg"
-readme = "README.md"
-repository = "https://github.com/ImageOptim/mozjpeg-rust"
-version = "0.10.7"
+description = "Higher-level wrapper for Jpegli library"
+documentation = "https://docs.rs/jpegli"
 edition = "2021"
+homepage = "https://github.com/Szpadel/jpegli-rs"
+include = ["/README.md", "/Cargo.toml", "/src/*.rs", "LICENSE"]
+keywords = [
+    "jpeg",
+    "jpegli",
+    "jpegxl",
+    "libjpeg",
+    "image",
+    "encoder",
+    "decoder",
+]
+license = "BSD3"
+name = "jpegli"
+readme = "README.md"
+repository = "https://github.com/Szpadel/jpegli-rs"
 rust-version = "1.71"
+version = "0.1.0"
 
 [dependencies]
-libc = "0.2.150"
-mozjpeg-sys = { version = "2.1.0", default-features = false, features = ["unwinding"] }
-rgb = { version = "0.8.34", features = ["as-bytes"] }
 arrayvec = "0.7.4"
-
-[features]
-default = ["mozjpeg-sys/default"]
-parallel = ["mozjpeg-sys/parallel"]
-nasm_simd = ["mozjpeg-sys/nasm_simd"]
-with_simd = ["mozjpeg-sys/with_simd"]
+jpegli-sys = { version = "0.1.0+0.10.2" }
+libc = "0.2.150"
+rgb = { version = "0.8.34", features = ["as-bytes"] }
 
 [dev-dependencies]
 bytemuck = "1.12.1"
 
 [package.metadata.docs.rs]
-targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--generate-link-to-definition"]
+targets = ["x86_64-unknown-linux-gnu"]

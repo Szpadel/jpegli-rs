@@ -1,3 +1,6 @@
 [workspace]
 members = ["jpegli-sys", "jpegli"]
 resolver = "2"
+
+[patch.crates-io]
+jpegli-sys = { path = "jpegli-sys" }

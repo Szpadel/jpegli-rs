@@ -1,4 +1,3 @@
-use crate::{colorspace::ColorSpace, PixelDensity};
 use crate::colorspace::ColorSpaceExt;
 use crate::component::CompInfo;
 use crate::component::CompInfoExt;
@@ -7,15 +6,14 @@ use crate::errormgr::ErrorMgr;
 use crate::fail;
 use crate::ffi;
 use crate::ffi::boolean;
-use crate::ffi::jpeg_compress_struct;
+use crate::ffi::jpegli_compress_struct;
 use crate::ffi::DCTSIZE;
 use crate::ffi::JDIMENSION;
 use crate::ffi::JPEG_LIB_VERSION;
-use crate::ffi::J_BOOLEAN_PARAM;
-use crate::ffi::J_INT_PARAM;
 use crate::marker::Marker;
 use crate::qtable::QTable;
 use crate::writedst::DestinationMgr;
+use crate::{colorspace::ColorSpace, PixelDensity};
 use arrayvec::ArrayVec;
 use std::cmp::min;
 use std::io;
@@ -31,9 +29,9 @@ const MAX_COMPONENTS: usize = 4;
 
 /// Create a new JPEG file from pixels
 ///
-/// Wrapper for `jpeg_compress_struct`
+/// Wrapper for `jpegli_compress_struct`
 pub struct Compress {
-    cinfo: jpeg_compress_struct,
+    cinfo: Box<jpegli_compress_struct>,
 
     /// It's `Box<ErrorMgr>`, but `cinfo` references `own_err`,
     /// so I need talismans to ward off nasal demons haunting self-referential structs
@@ -77,18 +75,18 @@ impl Compress {
     pub fn new_err(err: Box<ErrorMgr>, color_space: ColorSpace) -> Compress {
         unsafe {
             let mut newself = Compress {
-                cinfo: mem::zeroed(),
+                cinfo: Box::new(mem::zeroed()),
                 own_err: Box::into_raw(err),
                 _it_is_self_referential: PhantomPinned,
             };
             newself.cinfo.common.err = addr_of_mut!(*newself.own_err);
 
-            let s = mem::size_of_val(&newself.cinfo);
-            ffi::jpeg_CreateCompress(&mut newself.cinfo, JPEG_LIB_VERSION, s);
+            let s = mem::size_of_val(&*newself.cinfo);
+            ffi::jpegli_CreateCompress(&mut newself.cinfo, JPEG_LIB_VERSION, s);
 
             newself.cinfo.in_color_space = color_space;
             newself.cinfo.input_components = color_space.num_components() as c_int;
-            ffi::jpeg_set_defaults(&mut newself.cinfo);
+            ffi::jpegli_set_defaults(&mut newself.cinfo);
 
             newself
         }
@@ -96,8 +94,7 @@ impl Compress {
 
     #[doc(hidden)]
     #[deprecated(note = "Give a Vec to start_compress instead")]
-    pub fn set_mem_dest(&self) {
-    }
+    pub fn set_mem_dest(&self) {}
 
     /// Settings can't be changed after this call. Returns a `CompressStarted` struct that will handle the rest of the writing.
     ///
@@ -105,12 +102,23 @@ impl Compress {
     ///
     /// It may panic, like all functions of this library.
     pub fn start_compress<W: io::Write>(self, writer: W) -> io::Result<CompressStarted<W>> {
-        if !self.components().iter().any(|c| c.h_samp_factor == 1) { return Err(io::Error::new(io::ErrorKind::InvalidInput, "at least one h_samp_factor must be 1")); }
-        if !self.components().iter().any(|c| c.v_samp_factor == 1) { return Err(io::Error::new(io::ErrorKind::InvalidInput, "at least one v_samp_factor must be 1")); }
+        if !self.components().iter().any(|c| c.h_samp_factor == 1) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "at least one h_samp_factor must be 1",
+            ));
+        }
+        if !self.components().iter().any(|c| c.v_samp_factor == 1) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "at least one v_samp_factor must be 1",
+            ));
+        }
 
         // 1bpp, rounded to 4K page
-        let expected_file_size = (self.cinfo.image_width as usize * self.cinfo.image_height as usize / 8 + 4095) & !4095;
-        let write_buffer_capacity = expected_file_size.clamp(1<<12, 1<<16);
+        let expected_file_size =
+            (self.cinfo.image_width as usize * self.cinfo.image_height as usize / 8 + 4095) & !4095;
+        let write_buffer_capacity = expected_file_size.clamp(1 << 12, 1 << 16);
 
         let mut started = CompressStarted {
             compress: self,
@@ -119,7 +127,7 @@ impl Compress {
         unsafe {
             let dest_ptr = addr_of_mut!(started.dest_mgr.as_mut().iface);
             started.compress.cinfo.dest = dest_ptr;
-            ffi::jpeg_start_compress(&mut started.compress.cinfo, true as boolean);
+            ffi::jpegli_start_compress(&mut started.compress.cinfo, true as boolean);
         }
         Ok(started)
     }
@@ -135,7 +143,7 @@ impl<W> CompressStarted<W> {
     /// It may panic, like all functions of this library.
     pub fn write_marker(&mut self, marker: Marker, data: &[u8]) {
         unsafe {
-            ffi::jpeg_write_marker(
+            ffi::jpegli_write_marker(
                 &mut self.compress.cinfo,
                 marker.into(),
                 data.as_ptr(),
@@ -166,7 +174,7 @@ impl<W> CompressStarted<W> {
         chunks.enumerate().for_each(move |(current_marker, chunk)| {
             buf.clear();
             buf.extend_from_slice(b"ICC_PROFILE\0");
-            buf.extend([current_marker as u8, num_chunks as u8]);
+            buf.extend([(current_marker as u8) + 1, num_chunks as u8]);
             buf.extend_from_slice(chunk);
 
             self.write_marker(Marker::APP(2), &buf)
@@ -205,13 +213,15 @@ impl<W> CompressStarted<W> {
     ///
     /// It may panic, like all functions of this library.
     pub fn write_scanlines(&mut self, image_src: &[u8]) -> io::Result<()> {
-        if self.compress.cinfo.raw_data_in != 0 ||
-            self.compress.cinfo.input_components <= 0 ||
-            self.compress.cinfo.image_width == 0 {
+        if self.compress.cinfo.raw_data_in != 0
+            || self.compress.cinfo.input_components <= 0
+            || self.compress.cinfo.image_width == 0
+        {
             return Err(io::ErrorKind::InvalidInput.into());
         }
 
-        let byte_width = self.compress.cinfo.image_width as usize * self.compress.cinfo.input_components as usize;
+        let byte_width = self.compress.cinfo.image_width as usize
+            * self.compress.cinfo.input_components as usize;
         for rows in image_src.chunks(MAX_MCU_HEIGHT * byte_width) {
             let mut row_pointers = ArrayVec::<_, MAX_MCU_HEIGHT>::new();
             for row in rows.chunks_exact(byte_width) {
@@ -222,7 +232,7 @@ impl<W> CompressStarted<W> {
             let mut row_pointers = row_pointers.as_ptr();
             while rows_left > 0 {
                 unsafe {
-                    let rows_written = ffi::jpeg_write_scanlines(
+                    let rows_written = ffi::jpegli_write_scanlines(
                         &mut self.compress.cinfo,
                         row_pointers,
                         rows_left,
@@ -261,12 +271,21 @@ impl<W> CompressStarted<W> {
 
         let num_components = self.components().len();
         if num_components > MAX_COMPONENTS || num_components > image_src.len() {
-            panic!("Too many components: declared {}, got {}", num_components, image_src.len());
+            panic!(
+                "Too many components: declared {}, got {}",
+                num_components,
+                image_src.len()
+            );
         }
 
         for (ci, comp_info) in self.components().iter().enumerate() {
             if comp_info.row_stride() * comp_info.col_stride() > image_src[ci].len() {
-                panic!("Bitmap too small. Expected {}x{}, got {}", comp_info.row_stride(), comp_info.col_stride(), image_src[ci].len());
+                panic!(
+                    "Bitmap too small. Expected {}x{}, got {}",
+                    comp_info.row_stride(),
+                    comp_info.col_stride(),
+                    image_src[ci].len()
+                );
             }
         }
 
@@ -291,7 +310,8 @@ impl<W> CompressStarted<W> {
 
                     for ri in 0..comp_height {
                         let start_offset = (comp_start_row + ri) * row_stride;
-                        row_ptrs[ci][ri] = image_src[ci][start_offset .. start_offset + row_stride].as_ptr();
+                        row_ptrs[ci][ri] =
+                            image_src[ci][start_offset..start_offset + row_stride].as_ptr();
                     }
                     for ri in comp_height..mcu_height {
                         row_ptrs[ci][ri] = ptr::null();
@@ -299,7 +319,11 @@ impl<W> CompressStarted<W> {
                     comp_ptrs[ci] = row_ptrs[ci].as_ptr();
                 }
 
-                let rows_written = ffi::jpeg_write_raw_data(&mut self.compress.cinfo, comp_ptrs.as_ptr(), mcu_height as u32) as usize;
+                let rows_written = ffi::jpegli_write_raw_data(
+                    &mut self.compress.cinfo,
+                    comp_ptrs.as_ptr(),
+                    mcu_height as u32,
+                ) as usize;
                 if 0 == rows_written {
                     return false;
                 }
@@ -313,10 +337,10 @@ impl<W> CompressStarted<W> {
 impl Compress {
     /// Set color space of JPEG being written, different from input color space
     ///
-    /// See `jpeg_set_colorspace` in libjpeg docs
+    /// See `jpegli_set_colorspace` in libjpeg docs
     pub fn set_color_space(&mut self, color_space: ColorSpace) {
         unsafe {
-            ffi::jpeg_set_colorspace(&mut self.cinfo, color_space);
+            ffi::jpegli_set_colorspace(&mut self.cinfo, color_space);
         }
     }
 
@@ -332,7 +356,6 @@ impl Compress {
         self.cinfo.input_gamma = gamma;
     }
 
-
     /// Sets pixel density of an image in the JFIF APP0 segment[^note].
     /// If this method is not called, the resulting JPEG will have a default
     /// pixel aspect ratio of 1x1.
@@ -345,16 +368,6 @@ impl Compress {
         self.cinfo.Y_density = density.y;
     }
 
-    /// If true, it will use MozJPEG's scan optimization. Makes progressive image files smaller.
-    pub fn set_optimize_scans(&mut self, opt: bool) {
-        unsafe {
-            ffi::jpeg_c_set_bool_param(&mut self.cinfo, J_BOOLEAN_PARAM::JBOOLEAN_OPTIMIZE_SCANS, opt as boolean);
-        }
-        if !opt {
-            self.cinfo.scan_info = ptr::null();
-        }
-    }
-
     /// If 1-100 (non-zero), it will use MozJPEG's smoothing.
     pub fn set_smoothing_factor(&mut self, smoothing_factor: u8) {
         self.cinfo.smoothing_factor = smoothing_factor as c_int;
@@ -365,36 +378,10 @@ impl Compress {
         self.cinfo.optimize_coding = opt as boolean;
     }
 
-    /// Specifies whether multiple scans should be considered during trellis
-    /// quantization.
-    pub fn set_use_scans_in_trellis(&mut self, opt: bool) {
-        unsafe {
-            ffi::jpeg_c_set_bool_param(&mut self.cinfo, J_BOOLEAN_PARAM::JBOOLEAN_USE_SCANS_IN_TRELLIS, opt as boolean);
-        }
-    }
-
     /// You can only turn it on
     pub fn set_progressive_mode(&mut self) {
         unsafe {
-            ffi::jpeg_simple_progression(&mut self.cinfo);
-        }
-    }
-
-    /// One scan for all components looks best. Other options may flash grayscale or green images.
-    pub fn set_scan_optimization_mode(&mut self, mode: ScanMode) {
-        unsafe {
-            ffi::jpeg_c_set_int_param(&mut self.cinfo, J_INT_PARAM::JINT_DC_SCAN_OPT_MODE, mode as c_int);
-            ffi::jpeg_set_defaults(&mut self.cinfo);
-        }
-    }
-
-    /// Reset to libjpeg v6 settings
-    ///
-    /// It gives files identical with libjpeg-turbo
-    pub fn set_fastest_defaults(&mut self) {
-        unsafe {
-            ffi::jpeg_c_set_int_param(&mut self.cinfo, J_INT_PARAM::JINT_COMPRESS_PROFILE, ffi::JINT_COMPRESS_PROFILE_VALUE::JCP_FASTEST as c_int);
-            ffi::jpeg_set_defaults(&mut self.cinfo);
+            ffi::jpegli_simple_progression(&mut self.cinfo);
         }
     }
 
@@ -406,21 +393,21 @@ impl Compress {
     /// Set image quality. Values 60-80 are recommended.
     pub fn set_quality(&mut self, quality: f32) {
         unsafe {
-            ffi::jpeg_set_quality(&mut self.cinfo, quality as c_int, false as boolean);
+            ffi::jpegli_set_quality(&mut self.cinfo, quality as c_int, false as boolean);
         }
     }
 
     /// Instead of quality setting, use a specific quantization table.
     pub fn set_luma_qtable(&mut self, qtable: &QTable) {
         unsafe {
-            ffi::jpeg_add_quant_table(&mut self.cinfo, 0, qtable.as_ptr(), 100, 1);
+            ffi::jpegli_add_quant_table(&mut self.cinfo, 0, qtable.as_ptr(), 100, 1);
         }
     }
 
     /// Instead of quality setting, use a specific quantization table for color.
     pub fn set_chroma_qtable(&mut self, qtable: &QTable) {
         unsafe {
-            ffi::jpeg_add_quant_table(&mut self.cinfo, 1, qtable.as_ptr(), 100, 1);
+            ffi::jpegli_add_quant_table(&mut self.cinfo, 1, qtable.as_ptr(), 100, 1);
         }
     }
 
@@ -453,7 +440,7 @@ impl<W: io::Write> CompressStarted<W> {
     #[inline]
     pub fn finish(mut self) -> io::Result<W> {
         unsafe {
-            ffi::jpeg_finish_compress(&mut self.compress.cinfo);
+            ffi::jpegli_finish_compress(&mut self.compress.cinfo);
         }
         self.compress.cinfo.dest = ptr::null_mut();
         drop(self.compress);
@@ -479,7 +466,7 @@ impl Drop for Compress {
     fn drop(&mut self) {
         unsafe {
             self.cinfo.dest = ptr::null_mut();
-            ffi::jpeg_destroy_compress(&mut self.cinfo);
+            ffi::jpegli_destroy_compress(&mut self.cinfo);
             // ErrorMgr is destroyed after cinfo can no longer reference it
             let _ = Box::from_raw(self.own_err);
         }
@@ -494,24 +481,24 @@ fn write_mem() {
 
     cinfo.set_size(17, 33);
 
-    #[allow(deprecated)] {
+    #[allow(deprecated)]
+    {
         cinfo.set_gamma(1.0);
     }
 
     cinfo.set_progressive_mode();
-    cinfo.set_scan_optimization_mode(ScanMode::AllComponentsTogether);
 
     cinfo.set_raw_data_in(true);
 
     cinfo.set_quality(88.);
 
-    cinfo.set_chroma_sampling_pixel_sizes((1,1), (1,1));
+    cinfo.set_chroma_sampling_pixel_sizes((1, 1), (1, 1));
     for c in cinfo.components() {
         assert_eq!(c.v_samp_factor, 1);
         assert_eq!(c.h_samp_factor, 1);
     }
 
-    cinfo.set_chroma_sampling_pixel_sizes((2,2), (2,2));
+    cinfo.set_chroma_sampling_pixel_sizes((2, 2), (2, 2));
     for (c, samp) in cinfo.components().iter().zip([2, 1, 1]) {
         assert_eq!(c.v_samp_factor, samp);
         assert_eq!(c.h_samp_factor, samp);
@@ -550,7 +537,7 @@ fn convert_colorspace() {
 
     let mut cinfo = cinfo.start_compress(Vec::new()).unwrap();
 
-    let scanlines = vec![127u8; 33*15*3];
+    let scanlines = vec![127u8; 33 * 15 * 3];
     cinfo.write_scanlines(&scanlines).unwrap();
 
     let res = cinfo.finish().unwrap();

@@ -1,15 +1,15 @@
 use crate::ffi;
-use crate::ffi::jpeg_common_struct;
+use crate::ffi::jpegli_common_struct;
 use std::borrow::Cow;
 use std::mem;
 use std::os::raw::c_int;
 
-pub use crate::ffi::jpeg_error_mgr as ErrorMgr;
+pub use crate::ffi::jpegli_error_mgr as ErrorMgr;
 
 pub(crate) fn unwinding_error_mgr() -> Box<ErrorMgr> {
     unsafe {
         let mut err = Box::new(mem::zeroed());
-        ffi::jpeg_std_error(&mut err);
+        ffi::jpegli_std_error(&mut err);
         err.error_exit = Some(unwind_error_exit);
         err.emit_message = Some(silence_message);
         err
@@ -17,7 +17,7 @@ pub(crate) fn unwinding_error_mgr() -> Box<ErrorMgr> {
 }
 
 #[cold]
-fn formatted_message(prefix: &str, cinfo: &mut jpeg_common_struct) -> String {
+fn formatted_message(prefix: &str, cinfo: &mut jpegli_common_struct) -> String {
     unsafe {
         let err = cinfo.err.as_ref().unwrap();
         match err.format_message {
@@ -30,7 +30,7 @@ fn formatted_message(prefix: &str, cinfo: &mut jpeg_common_struct) -> String {
                 push_str_in_cap(&mut out, prefix);
                 push_str_in_cap(&mut out, &msg);
                 out
-            },
+            }
             None => format!("{}code {}", prefix, err.msg_code),
         }
     }
@@ -44,11 +44,10 @@ fn push_str_in_cap(out: &mut String, s: &str) {
 }
 
 #[cold]
-extern "C-unwind" fn silence_message(_cinfo: &mut jpeg_common_struct, _level: c_int) {
-}
+extern "C-unwind" fn silence_message(_cinfo: &mut jpegli_common_struct, _level: c_int) {}
 
 #[cold]
-extern "C-unwind" fn unwind_error_exit(cinfo: &mut jpeg_common_struct) {
+extern "C-unwind" fn unwind_error_exit(cinfo: &mut jpegli_common_struct) {
     let msg = formatted_message("libjpeg fatal error: ", cinfo);
     // avoids calling panic handler
     std::panic::resume_unwind(Box::new(msg));

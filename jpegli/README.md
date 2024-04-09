@@ -1,6 +1,6 @@
-# Rust wrapper for MozJPEG library
+# Rust wrapper for Jpegli library based on mozjpeg-rust
 
-This library adds a safe(r) interface on top of libjpeg-turbo and MozJPEG for reading and writing well-compressed JPEG images.
+This library adds a safe(r) interface on top of jpegli for reading and writing well-compressed JPEG images.
 
 The interface is still being developed, so it has rough edges and may change.
 
@@ -12,19 +12,19 @@ In crates compiled with `panic=abort` setting, any JPEG error will abort the pro
 
 ```rust
 std::panic::catch_unwind(|| -> std::io::Result<Vec<rgb::RGB8>> {
-    let d = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS)
+    let d = jpegli::Decompress::with_markers(jpegli::ALL_MARKERS)
         .from_path("tests/test.jpg")?;
 
     d.width(); // FYI
     d.height();
-    d.color_space() == mozjpeg::ColorSpace::JCS_YCbCr;
+    d.color_space() == jpegli::ColorSpace::JCS_YCbCr;
     for marker in d.markers() { /* read metadata or color profiles */ }
 
     // rgb() enables conversion
     let mut image = d.rgb()?;
     image.width();
     image.height();
-    image.color_space() == mozjpeg::ColorSpace::JCS_RGB;
+    image.color_space() == jpegli::ColorSpace::JCS_RGB;
 
     let pixels = image.read_scanlines()?;
     image.finish()?;
@@ -37,7 +37,7 @@ std::panic::catch_unwind(|| -> std::io::Result<Vec<rgb::RGB8>> {
 ```rust
 # let width = 8; let height = 8;
 std::panic::catch_unwind(|| -> std::io::Result<Vec<u8>> {
-    let mut comp = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
+    let mut comp = jpegli::Compress::new(jpegli::ColorSpace::JCS_RGB);
 
     comp.set_size(width, height);
     let mut comp = comp.start_compress(Vec::new())?; // any io::Write will work
@@ -50,3 +50,9 @@ std::panic::catch_unwind(|| -> std::io::Result<Vec<u8>> {
     Ok(writer)
 });
 ```
+
+
+## Thanks
+Huge thanks for the original authors of the [mozjpeg-rust](https://github.com/ImageOptim/mozjpeg-rust) library, which this library is based on.
+
+Most of the code is taken from there, with some modifications to work with jpegli instead of mozjpeg.
